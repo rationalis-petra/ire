@@ -1,7 +1,7 @@
 
 ;; ---------------------------------------------------
 ;; 
-;;             HEDRON TEST PROGRAM
+;;              Interactive Relic Editor (IRE)
 ;; 
 ;; ---------------------------------------------------
 
@@ -19,7 +19,6 @@
 (def SyncObject Struct
   [.image-available hedron.Semaphore]
   [.render-finished hedron.Semaphore])
-
 
 (def create-frame-object proc [pool] struct
   [.command-buffer (hedron.create-command-buffer pool)]
@@ -80,19 +79,30 @@
 ;; TODO: check https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
 ;;   for more info on error message
 
-(def draw-frame proc [(fdata FrameObject) (sync SyncObject) pipeline surface] seq
+(def draw-frame proc [(fdata FrameObject) (sync SyncObject) pipeline surface
+                      (resize (Maybe (Pair U32 U32)))] seq
   (hedron.wait-for-fence fdata.in-flight)
-  (hedron.reset-fence fdata.in-flight)
 
   [let! next-image (hedron.acquire-next-image surface sync.image-available)]
-  (hedron.reset-command-buffer fdata.command-buffer)
+  (match resize
+    [[:some extent] seq
+      (hedron.resize-window-surface surface extent)]
+    [:none seq
+      (hedron.reset-fence fdata.in-flight)
+      (hedron.reset-command-buffer fdata.command-buffer)
+        
+      ;; The actual drawing
+      (record-command fdata.command-buffer pipeline surface next-image)
+        
+      (hedron.queue-submit fdata.command-buffer fdata.in-flight sync.image-available sync.render-finished)
+      (hedron.queue-present surface sync.render-finished next-image)]))
 
-  ;; The actual drawing
-  (record-command fdata.command-buffer pipeline surface next-image)
-
-  (hedron.queue-submit fdata.command-buffer fdata.in-flight sync.image-available sync.render-finished)
-  (hedron.queue-present surface sync.render-finished next-image))
-
+(def new-winsize proc [(messages (List window.Message))] seq
+  (if (u64.= 0 messages.len)
+      (Maybe (Pair U32 U32)):none
+      (match (elt (u64.- messages.len 1) messages)
+        [[:resize x y]
+            (Maybe (Pair U32 U32)):some (struct (Pair U32 U32) [._1 x] [._2 y])])))
 
 (def main proc [] seq
   [let! ;; windowing !
@@ -109,13 +119,18 @@
         [for fence-frame = 0 then (u64.mod (u64.+ fence-frame 1) 2)]
         [for sync-frame = 0 then  (u64.mod (u64.+ sync-frame 1) num-images)]
 
-    (window.poll-events)
-    ;;[let! events (window.poll-events)]
+    (seq 
+      [let! events (window.poll-events win)
+            winsize (new-winsize events)]
+      ;; do nothing with events for now,
+      ;; the only event we care abount (resize)
+
+    ;;[let! events (window.poll-events window)]
     ;; (loop [for event in events]
     ;;   (match event
     ;;     [:resize new-width new-height (resize-surface surface new-with new-height)]
     ;;     [_ :unit ])) ;; default/do nothing
-    (draw-frame (elt fence-frame frame-objects) (elt sync-frame sync-objects) pipeline surface))
+      (draw-frame (elt fence-frame frame-objects) (elt sync-frame sync-objects) pipeline surface winsize)))
 
   (hedron.wait-for-device)
 
