@@ -1,7 +1,6 @@
-
 ;; ---------------------------------------------------
 ;; 
-;;              Interactive Relic Editor (IRE)
+;;          Interactive Relic Editor (IRE)
 ;; 
 ;; ---------------------------------------------------
 
@@ -83,19 +82,22 @@
                       (resize (Maybe (Pair U32 U32)))] seq
   (hedron.wait-for-fence fdata.in-flight)
 
-  [let! next-image (hedron.acquire-next-image surface sync.image-available)]
+  [let! imres (hedron.acquire-next-image surface sync.image-available)]
   (match resize
     [[:some extent] seq
       (hedron.resize-window-surface surface extent)]
     [:none seq
-      (hedron.reset-fence fdata.in-flight)
-      (hedron.reset-command-buffer fdata.command-buffer)
-        
-      ;; The actual drawing
-      (record-command fdata.command-buffer pipeline surface next-image)
-        
-      (hedron.queue-submit fdata.command-buffer fdata.in-flight sync.image-available sync.render-finished)
-      (hedron.queue-present surface sync.render-finished next-image)]))
+      (match imres
+       [[:image next-image] seq
+         (hedron.reset-fence fdata.in-flight)
+         (hedron.reset-command-buffer fdata.command-buffer)
+           
+         ;; The actual drawing
+         (record-command fdata.command-buffer pipeline surface next-image)
+           
+         (hedron.queue-submit fdata.command-buffer fdata.in-flight sync.image-available sync.render-finished)
+         (hedron.queue-present surface sync.render-finished next-image)]
+      [:resized :unit])]))
 
 (def new-winsize proc [(messages (List window.Message))] seq
   (if (u64.= 0 messages.len)
