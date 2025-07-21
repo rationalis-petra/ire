@@ -5,6 +5,7 @@
 ;; ---------------------------------------------------
 
 
+
 (open platform)
 (open data)
 (open data.list)
@@ -53,7 +54,6 @@
   [.pos    Vec2]
   [.colour Vec3])
 
-
 ;; -------------------------------------------------------------------
 ;;
 ;;             Drawing and related utility functions
@@ -100,8 +100,8 @@
   (hedron.command-begin command-buffer)
   (hedron.command-begin-renderpass command-buffer surface next-image)
   (hedron.command-bind-pipeline command-buffer pipeline)
-  (hedron.command-bind-buffer command-buffer vertex-buffer)
   (hedron.command-set-surface command-buffer surface)
+  (hedron.command-bind-buffer command-buffer vertex-buffer)
   (hedron.command-draw command-buffer 3 1 0 0)
   (hedron.command-end-renderpass command-buffer)
   (hedron.command-end command-buffer))
@@ -157,6 +157,7 @@
           (struct Vertex [.pos (struct Vec2 [.x -0.5] [.y 0.5])]
                          [.colour (struct Vec3 [.x 0.0] [.y 0.0] [.z 1.0])]))
         vertex-buffer (hedron.create-buffer (u64.* (size-of Vertex) vertices.len))]
+
   (hedron.set-buffer-data vertex-buffer vertices.data)
 
   (loop [while (bool.not (window.should-close win))]
@@ -166,7 +167,8 @@
       [let! events (window.poll-events win)
             winsize (new-winsize events)]
 
-      (draw-frame (elt fence-frame acquire-objects) submit-objects pipeline vertex-buffer surface winsize)))
+      (draw-frame (elt fence-frame acquire-objects) submit-objects pipeline vertex-buffer surface winsize)
+      (free-list events)))
 
   (hedron.wait-for-device)
 
