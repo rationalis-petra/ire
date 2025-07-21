@@ -4,8 +4,6 @@
 ;; 
 ;; ---------------------------------------------------
 
-
-
 (open platform)
 (open data)
 (open data.list)
@@ -45,14 +43,19 @@
   sync-objects)
 
 (def load-shader proc [filename] seq
-  [let! file (filesystem.open-file filename :read)]
-  (hedron.create-shader-module (filesystem.read-chunk file :none)))
+  [let! file (filesystem.open-file filename :read)
+        chunk (filesystem.read-chunk file :none)
+        module (hedron.create-shader-module chunk)]
+   (free-list chunk)
+   (filesystem.close-file file)
+   module)
 
 (def Vec2 Struct [.x F32] [.y F32])
 (def Vec3 Struct [.x F32] [.y F32] [.z F32])
 (def Vertex Struct
   [.pos    Vec2]
   [.colour Vec3])
+
 
 ;; -------------------------------------------------------------------
 ;;
@@ -94,6 +97,7 @@
   (each hedron.destroy-shader-module shaders)
   (free vertex-binding-descriptions.data)
   (free vertex-attribute-descriptions.data)
+  (free shaders.data)
   pipeline)
 
 (def record-command proc [command-buffer pipeline vertex-buffer surface next-image] seq
@@ -159,6 +163,7 @@
         vertex-buffer (hedron.create-buffer (u64.* (size-of Vertex) vertices.len))]
 
   (hedron.set-buffer-data vertex-buffer vertices.data)
+  (free vertices.data)
 
   (loop [while (bool.not (window.should-close win))]
         [for fence-frame = 0 then (u64.mod (u64.+ fence-frame 1) 2)]
@@ -173,7 +178,9 @@
   (hedron.wait-for-device)
 
   (each destroy-sync-acquire acquire-objects)
+  (free acquire-objects.data)
   (each destroy-sync-submit submit-objects)
+  (free submit-objects.data)
   (hedron.destroy-buffer vertex-buffer)
   (hedron.destroy-command-pool command-pool)
   (hedron.destroy-pipeline pipeline)
