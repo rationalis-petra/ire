@@ -67,7 +67,7 @@
 
 (def create-graphics-pipeline proc [surface] seq
   [let! ;; shaders 
-        shaders (list (load-shader "vert.spv") (load-shader "frag.spv"))
+        shaders (list (load-shader "resources/shaders/vert.spv") (load-shader "resources/shaders/frag.spv"))
 
         vertex-binding-descriptions (list
           (struct hedron.BindingDescription
