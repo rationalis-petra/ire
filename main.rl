@@ -56,6 +56,11 @@
   [.pos    Vec2]
   [.colour Vec3])
 
+(def DrawData Struct
+  [.num-indices U32]
+  [.index-buffer hedron.Buffer]
+  [.vertex-buffer hedron.Buffer]
+  [.pipeline hedron.Pipeline])
 
 ;; -------------------------------------------------------------------
 ;;
@@ -100,17 +105,19 @@
   (free shaders.data)
   pipeline)
 
-(def record-command proc [command-buffer pipeline vertex-buffer surface next-image] seq
+(def record-command proc [command-buffer (dd DrawData) surface next-image] seq
   (hedron.command-begin command-buffer)
   (hedron.command-begin-renderpass command-buffer surface next-image)
-  (hedron.command-bind-pipeline command-buffer pipeline)
+  (hedron.command-bind-pipeline command-buffer dd.pipeline)
   (hedron.command-set-surface command-buffer surface)
-  (hedron.command-bind-buffer command-buffer vertex-buffer)
-  (hedron.command-draw command-buffer 3 1 0 0)
+  (hedron.command-bind-vertex-buffer command-buffer dd.vertex-buffer)
+  (hedron.command-bind-index-buffer command-buffer dd.index-buffer :u16)
+  (hedron.command-draw-indexed command-buffer dd.num-indices 1 0 0 0)
   (hedron.command-end-renderpass command-buffer)
   (hedron.command-end command-buffer))
 
-(def draw-frame proc [(acquire SyncAcquire) (submit (List SyncSubmit)) pipeline vertex-buffer surface
+(def draw-frame proc [(acquire SyncAcquire) (submit (List SyncSubmit))
+                      (draw-data DrawData) surface
                       (resize (Maybe (Pair U32 U32)))] seq
   (hedron.wait-for-fence acquire.in-flight)
 
@@ -128,7 +135,7 @@
           (hedron.reset-command-buffer acquire.command-buffer)
             
           ;; The actual drawing
-          (record-command acquire.command-buffer pipeline vertex-buffer surface next-image)
+          (record-command acquire.command-buffer draw-data surface next-image)
             
           (hedron.queue-submit acquire.command-buffer acquire.in-flight acquire.image-available syn.render-finished)
           (hedron.queue-present surface syn.render-finished next-image)]
@@ -154,16 +161,31 @@
         submit-objects (create-sync-submit-objects num-images)
 
         vertices (list
-          (struct Vertex [.pos (struct Vec2 [.x 0.0]  [.y -0.5])]
+          (struct Vertex [.pos (struct Vec2 [.x -0.5]  [.y -0.5])]
                          [.colour (struct Vec3 [.x 1.0] [.y 0.0] [.z 0.0])])
-          (struct Vertex [.pos (struct Vec2 [.x 0.5]  [.y 0.5])]
+          (struct Vertex [.pos (struct Vec2 [.x 0.5]  [.y -0.5])]
                          [.colour (struct Vec3 [.x 0.0] [.y 1.0] [.z 0.0])])
+          (struct Vertex [.pos (struct Vec2 [.x 0.5] [.y 0.5])]
+                         [.colour (struct Vec3 [.x 0.0] [.y 0.0] [.z 1.0])])
           (struct Vertex [.pos (struct Vec2 [.x -0.5] [.y 0.5])]
                          [.colour (struct Vec3 [.x 0.0] [.y 0.0] [.z 1.0])]))
-        vertex-buffer (hedron.create-buffer (u64.* (size-of Vertex) vertices.len))]
+
+        indices (is (list 0 1 2 2 3 0) (List U16))
+   
+        vertex-buffer (hedron.create-buffer :vertex (* (size-of Vertex) vertices.len))
+        index-buffer (hedron.create-buffer :index (* (size-of U16) indices.len))
+
+        draw-data (struct DrawData
+                     [.num-indices (narrow indices.len U32)]
+                     [.index-buffer index-buffer]
+                     [.vertex-buffer vertex-buffer]
+                     [.pipeline pipeline])]
 
   (hedron.set-buffer-data vertex-buffer vertices.data)
   (free vertices.data)
+
+  (hedron.set-buffer-data index-buffer indices.data)
+  (free indices.data)
 
   (loop [while (bool.not (window.should-close win))]
         [for fence-frame = 0 then (u64.mod (u64.+ fence-frame 1) 2)]
@@ -172,7 +194,7 @@
       [let! events (window.poll-events win)
             winsize (new-winsize events)]
 
-      (draw-frame (elt fence-frame acquire-objects) submit-objects pipeline vertex-buffer surface winsize)
+      (draw-frame (elt fence-frame acquire-objects) submit-objects draw-data surface winsize)
       (free-list events)))
 
   (hedron.wait-for-device)
@@ -182,6 +204,7 @@
   (each destroy-sync-submit submit-objects)
   (free submit-objects.data)
   (hedron.destroy-buffer vertex-buffer)
+  (hedron.destroy-buffer index-buffer)
   (hedron.destroy-command-pool command-pool)
   (hedron.destroy-pipeline pipeline)
   (hedron.destroy-window-surface surface)
