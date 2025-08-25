@@ -6,7 +6,9 @@
 
 ;; Run with pico script runner.rl from the root directory 
 
-(load-module "src/ui/ui.rl")
-(load-module "src/main.rl")
+(meta.refl.load-module "src/ui/ui.rl" :none)
+(meta.refl.load-module "src/main.rl" :none)
+
+(import ire)
 
 (ire.main)
